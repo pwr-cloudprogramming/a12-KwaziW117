@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  java-app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+
+  web-server:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8081:80"

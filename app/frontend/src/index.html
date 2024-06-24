@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+      name="viewport"
+    />
+    <meta content="ie=edge" http-equiv="X-UA-Compatible" />
+    <title>Document</title>
+    <link
+      crossorigin="anonymous"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+      integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u"
+      rel="stylesheet"
+    />
+    <link href="css/style.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.4.0/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.1.13/jsrsasign-all-min.js"></script>
+    <!-- Library for decoding JWT -->
+    <script src="https://cdn.jsdelivr.net/npm/aws-amplify@4.3.46/dist/aws-amplify.min.js"></script>
+    <!-- AWS Amplify -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aws-sdk/2.814.0/aws-sdk.min.js"></script>
+    <!-- AWS SDK -->
+    <script src="js/cognito-config.js"></script>
+    <script src="js/config.js"></script>
+  </head>
+  <body>
+    <div class="text-center" id="box">
+      <header>
+        <h1>Play Tic Tac Toe</h1>
+      </header>
+      <div class="login-signup-form">
+        <div>
+          <!-- Sign Up Form -->
+          <div id="signup-form">
+            <h2>Registration</h2>
+            <input id="signup-email" placeholder="Email" />
+            <input id="signup-username" placeholder="Username" />
+            <input
+              id="signup-password"
+              type="password"
+              placeholder="Password"
+            />
+            <input type="file" id="signup-profilepic" accept="image/*" />
+            <!-- Image upload input -->
+            <span id="file-name"></span>
+            <!-- Span to display file name -->
+            <button onclick="signUp()">Sign Up</button>
+          </div>
+
+          <!-- Verification Form -->
+          <div id="verification-form" style="display: none">
+            <h2>Verification</h2>
+            <input id="verification-username" placeholder="Username" />
+            <input id="verification-code" placeholder="Verification Code" />
+            <button onclick="verify()">Verify</button>
+          </div>
+        </div>
+        <div>
+          <!-- Sign In Form -->
+          <div id="signin-form">
+            <h2>Login</h2>
+            <input id="signin-username" placeholder="Username" />
+            <input
+              id="signin-password"
+              type="password"
+              placeholder="Password"
+            />
+            <button onclick="signIn()">Sign In</button>
+          </div>
+        </div>
+      </div>
+      <!-- Game Interface -->
+      <div id="game-interface" style="display: none">
+        <div>
+          <h2>Welcome, <span id="player-username"></span></h2>
+          <button onclick="signOut()">Sign Out</button>
+        </div>
+        <button onclick="create_game()">Create a new game</button>
+        <button onclick="connectToRandom()">Connect to random game</button>
+        <input id="game_id" placeholder="Paste game id" />
+        <button onclick="connectToSpecificGame()">Connect by game id</button>
+        <div id="message"></div>
+        <ul id="gameBoard">
+          <li class="tic" id="0_0"></li>
+          <li class="tic" id="0_1"></li>
+          <li class="tic" id="0_2"></li>
+          <li class="tic" id="1_0"></li>
+          <li class="tic" id="1_1"></li>
+          <li class="tic" id="1_2"></li>
+          <li class="tic" id="2_0"></li>
+          <li class="tic" id="2_1"></li>
+          <li class="tic" id="2_2"></li>
+        </ul>
+        <div class="clearfix"></div>
+        <!-- Footer will be dynamically added here -->
+      </div>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        aws_amplify.Amplify.configure({
+          Auth: {
+            region: COGNITO_REGION,
+            userPoolId: COGNITO_USER_POOL_ID,
+            userPoolWebClientId: COGNITO_CLIENT_ID,
+          },
+          Storage: {
+            AWSS3: {
+              bucket: S3_BUCKET_NAME, // Reference the bucket name from cognito-config.js
+              region: COGNITO_REGION,
+            },
+          },
+        });
+
+        async function signUp() {
+          const email = document.getElementById("signup-email").value;
+          const username = document.getElementById("signup-username").value;
+          const password = document.getElementById("signup-password").value;
+          const profilePic =
+            document.getElementById("signup-profilepic").files[0];
+
+          const url = `${window.location.protocol}//${window.location.hostname}:8080`;
+
+          try {
+            const { user } = await aws_amplify.Auth.signUp({
+              username,
+              password,
+              attributes: {
+                email: email,
+              },
+            });
+
+            if (profilePic) {
+              const formData = new FormData();
+              formData.append("username", username);
+              formData.append("profilePic", profilePic);
+
+              const response = await fetch(`${url}/api/upload-profile-pic`, {
+                // Use dynamic URL
+                method: "POST",
+                body: formData,
+              });
+
+              if (!response.ok) {
+                throw new Error("Failed to upload profile picture");
+              }
+
+              alert("Profile picture uploaded successfully!");
+            }
+
+            alert(
+              "Sign up successful! Please check your email for the verification code."
+            );
+            document.getElementById("signup-form").style.display = "none";
+            document.getElementById("verification-form").style.display =
+              "block";
+            document.getElementById("verification-username").value = username;
+          } catch (error) {
+            alert(error.message || error);
+          }
+        }
+
+        async function verify() {
+          const username = document.getElementById(
+            "verification-username"
+          ).value;
+          const code = document.getElementById("verification-code").value;
+
+          try {
+            await aws_amplify.Auth.confirmSignUp(username, code);
+            alert("Verification successful! You can now sign in.");
+            document.getElementById("verification-form").style.display = "none";
+            document.getElementById("signin-form").style.display = "block";
+          } catch (error) {
+            alert(error.message || error);
+          }
+        }
+
+        async function signIn() {
+          const username = document.getElementById("signin-username").value;
+          const password = document.getElementById("signin-password").value;
+
+          try {
+            const user = await aws_amplify.Auth.signIn(username, password);
+            const session = await aws_amplify.Auth.currentSession();
+            const idToken = session.getIdToken().getJwtToken();
+            localStorage.setItem("idToken", idToken);
+            alert("Sign in successful!");
+            document.getElementById("game-interface").style.display = "block";
+            document.getElementById("signin-form").style.display = "none";
+            document.getElementById("signup-form").style.display = "none";
+            document.getElementById("player-username").textContent =
+              user.username;
+            // Assuming opponent's username is known after sign in or fetched later
+            const opponentUsername = "opponent"; // Placeholder for opponent's username
+            fetchProfilePics(user.username, opponentUsername);
+          } catch (error) {
+            alert(error.message || error);
+          }
+        }
+
+        async function signOut() {
+          try {
+            await aws_amplify.Auth.signOut();
+            localStorage.removeItem("idToken");
+            alert("Sign out successful!");
+            document.getElementById("game-interface").style.display = "none";
+            document.getElementById("signin-form").style.display = "block";
+            document.getElementById("signup-form").style.display = "block";
+          } catch (error) {
+            alert(error.message || error);
+          }
+        }
+
+        const idToken = localStorage.getItem("idToken");
+        if (idToken && validateToken(idToken)) {
+          aws_amplify.Auth.currentAuthenticatedUser().then((user) => {
+            document.getElementById("player-username").textContent =
+              user.username;
+            // Assuming opponent's username is known after sign in or fetched later
+            const opponentUsername = "opponent"; // Placeholder for opponent's username
+            fetchProfilePics(user.username, opponentUsername);
+          });
+          document.getElementById("game-interface").style.display = "block";
+          document.getElementById("signin-form").style.display = "none";
+          document.getElementById("signup-form").style.display = "none";
+        } else {
+          document.getElementById("game-interface").style.display = "none";
+          document.getElementById("signin-form").style.display = "block";
+          document.getElementById("signup-form").style.display = "block";
+        }
+
+        function validateToken(token) {
+          try {
+            const payload = KJUR.jws.JWS.readSafeJSONString(
+              b64utoutf8(token.split(".")[1])
+            );
+            const currentTime = Math.floor(Date.now() / 1000);
+            return payload.exp > currentTime;
+          } catch (e) {
+            console.error("Error decoding token:", e);
+            return false;
+          }
+        }
+
+        document
+          .getElementById("signup-profilepic")
+          .addEventListener("change", function (event) {
+            const fileName = event.target.files[0]?.name || "No file selected";
+            document.getElementById("file-name").textContent = fileName;
+          });
+
+        window.signUp = signUp;
+        window.verify = verify;
+        window.signIn = signIn;
+        window.signOut = signOut;
+      });
+    </script>
+    <script src="js/script.js"></script>
+    <script src="js/socket_js.js"></script>
+  </body>
+</html>
